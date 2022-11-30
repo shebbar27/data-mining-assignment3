@@ -1,15 +1,20 @@
 import csv
-import cv2
 import numpy as np
 import os
 import pickle
 import shutil
+import tensorflow as tf
+
+
+from tensorflow import keras
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing import image
 
 
 TEST_DIR = 'testPatient/'
 TEST_LABELS_FILE = 'test_Labels.csv'
-TRAIN_DIR = 'PatientData/'
-LABELLED_DATA_DIR = TRAIN_DIR + 'LabelledData/'
+PATIENT_DIR = 'PatientData/'
+LABELLED_DATA_DIR = PATIENT_DIR + 'LabelledData/'
 IMAGE_EXTENSION = '.png'
 IMAGE_FILE_SUFFIX = 'thresh' + IMAGE_EXTENSION
 LABEL_FILE_EXTENSION = '.csv'
@@ -18,6 +23,7 @@ FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
 MODEL_FILE_NAME = 'svm_model.sav'
+PATIENT = 'Patient'
 
 
 # utility function to remove file extension form file name
@@ -59,6 +65,35 @@ def read_from_csv_file(file_path):
     return csv_dict
 
 
+# function to get training and validation dataset
+def get_train_and_test_dataset():
+    print("Generating training and valdiation datasets")
+    data_generator = ImageDataGenerator(validation_split=0.2, rescale=1/255)
+    train_dataset = data_generator.flow_from_directory(
+                                            LABELLED_DATA_DIR,
+                                            subset='training',
+                                            target_size=(500,600),
+                                            interpolation='bilinear',
+                                            keep_aspect_ratio=True,
+                                            shuffle=True,
+                                            batch_size = 32,
+                                            class_mode = 'binary'
+                                        )
+                                         
+    test_dataset = data_generator.flow_from_directory(
+                                            LABELLED_DATA_DIR,
+                                            subset='validation',
+                                            target_size=(500,600),
+                                            interpolation='bilinear',
+                                            keep_aspect_ratio=True,
+                                            shuffle=True,
+                                            batch_size = 32,
+                                            class_mode = 'binary'
+                                        )
+    return train_dataset, test_dataset
+
+
+
 # function to read all the brain images form all the sub directories under the given directory
 # and move them to class folder based on labels
 def read_and_organize_image_data(image_dir):
@@ -67,7 +102,7 @@ def read_and_organize_image_data(image_dir):
     init_empty_dirs(join_path(LABELLED_DATA_DIR, '1/'))
 
     # get list of all sub directories under Slices folder    
-    image_dirs = [dir for dir in os.listdir(image_dir) if (os.path.isdir(join_path(image_dir, dir)) and not LABELLED_DATA_DIR.__contains__(dir))]
+    image_dirs = [dir for dir in os.listdir(image_dir) if (os.path.isdir(join_path(image_dir, dir)) and dir.__contains__(PATIENT))]
 
     for dir in image_dirs:
         sub_dir_path = join_path(image_dir, dir)
@@ -90,8 +125,8 @@ def save_model(model, model_filename):
 
 
 def main():
-    read_and_organize_image_data(TRAIN_DIR)
+    read_and_organize_image_data(PATIENT_DIR)
+    train_dataset, test_dataset = get_train_and_test_dataset()
     
-
 if __name__ == '__main__':
     main()
