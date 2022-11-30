@@ -1,8 +1,6 @@
-import clustering
 import csv
 import cv2
 import os
-import shutil
 
 
 TEST_DIR = 'testPatient/'
@@ -33,12 +31,19 @@ def read_image_data(image_dir):
 
 
 # utility function to write data to csv file
-def write_to_scv_file(file_path, header, rows):
+def write_to_csv_file(file_path, header, rows):
     with open(file_path, 'w') as file:
         writer = csv.writer(file)
         writer.writerow(header)
         writer.writerows(rows)
 
+
+# utility function to read data from csv file
+def read_from_csv_file(file_path):
+    csvDict = {}
+    with open(file_path, 'r') as file:
+        csvDict = csv.DictReader(file)
+    return csvDict
 
 def main():
     NotImplemented
