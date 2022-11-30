@@ -1,0 +1,6 @@
+__pycache__/
+testPatient/
+PatientData/
+.DS_Store
+*.csv
+*.zip
