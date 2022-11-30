@@ -95,7 +95,6 @@ def save_model(model, model_filename):
 def combine_images_and_labels(images, labels):
     images_data_arr = []
     label_data_arr = []
-    keys_arr = []
     count = 0
     h = 0
     w = 0
@@ -117,13 +116,11 @@ def combine_images_and_labels(images, labels):
         
             images_data_arr.append(image.flatten())
             label_data_arr.append(label)
-            keys_arr.append(key)
 
     images_features = np.array(images_data_arr)
     labels_col = np.array(label_data_arr)
     df = pd.DataFrame(images_features)
     df[LABEL_HEADER] = labels_col
-    df[NAME_HEADER] = keys_arr
 
     # print(df.head(n=5))
     # print(df.info())
@@ -149,7 +146,6 @@ def main():
     labels = read_data_labels(TRAIN_DIR)
     df = combine_images_and_labels(images, labels)
     labelled_df = df.copy()
-    labelled_df.drop(NAME_HEADER, axis=1)
 
     # supervised machine learning using SVM model
     x=labelled_df.iloc[:,:-1]
