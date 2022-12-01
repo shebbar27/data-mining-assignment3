@@ -1,9 +1,7 @@
 import csv
-import numpy as np
 import os
 import pickle
 import shutil
-import tensorflow as tf
 
 
 from tensorflow import keras
@@ -14,6 +12,7 @@ from tensorflow.keras.preprocessing import image
 TEST_DIR = 'testPatient/'
 TEST_LABELS_FILE = 'test_Labels.csv'
 PATIENT_DIR = 'PatientData/'
+PATIENT_PREFIX = 'Patient'
 LABELLED_DATA_DIR = PATIENT_DIR + 'LabelledData/'
 IMAGE_EXTENSION = '.png'
 IMAGE_FILE_SUFFIX = 'thresh' + IMAGE_EXTENSION
@@ -23,7 +22,8 @@ FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
 MODEL_FILE_NAME = 'svm_model.sav'
-PATIENT = 'Patient'
+IMAGE_HEIGHT = 512
+IMAGE_WIDTH = 512
 
 
 # utility function to remove file extension form file name
@@ -62,6 +62,8 @@ def read_from_csv_file(file_path):
                 csv_dict[key] = 1 if row[LABEL_HEADER] != '0' else 0
     else:
         print(f'Error file: {file_path} does not exist!')
+
+    #print(len(csv_dict))
     return csv_dict
 
 
@@ -70,39 +72,77 @@ def get_train_and_test_dataset():
     print("Generating training and valdiation datasets")
     data_generator = ImageDataGenerator(validation_split=0.2, rescale=1/255)
     train_dataset = data_generator.flow_from_directory(
-                                            LABELLED_DATA_DIR,
-                                            subset='training',
-                                            target_size=(500,600),
-                                            interpolation='bilinear',
-                                            keep_aspect_ratio=True,
-                                            shuffle=True,
-                                            batch_size = 32,
-                                            class_mode = 'binary'
-                                        )
+        LABELLED_DATA_DIR,
+        subset='training',
+        target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+        interpolation='bilinear',
+        #keep_aspect_ratio=True,
+        shuffle=True,
+        batch_size = 8,
+        class_mode = 'binary',
+        classes = [])
                                          
     test_dataset = data_generator.flow_from_directory(
-                                            LABELLED_DATA_DIR,
-                                            subset='validation',
-                                            target_size=(500,600),
-                                            interpolation='bilinear',
-                                            keep_aspect_ratio=True,
-                                            shuffle=True,
-                                            batch_size = 32,
-                                            class_mode = 'binary'
-                                        )
+        LABELLED_DATA_DIR,
+        subset='validation',
+        target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+        interpolation='bilinear',
+        #keep_aspect_ratio=True,
+        shuffle=True,
+        batch_size = 8,
+        class_mode = 'binary')
     return train_dataset, test_dataset
 
+
+# function to get CNN model
+def get_cnn_model():
+    KERNEL = (3, 3)
+    pool_size = (3,3)
+    model = keras.Sequential()
+
+    # Convolutional layer and maxpool layer 1
+    model.add(keras.layers.Conv2D(32, KERNEL, activation='relu', input_shape=(IMAGE_WIDTH, IMAGE_WIDTH, 3)))
+    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+
+    # Convolutional layer and maxpool layer 2
+    model.add(keras.layers.Conv2D(64, KERNEL, activation='relu'))
+    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+
+    # Convolutional layer and maxpool layer 3
+    model.add(keras.layers.Conv2D(128, KERNEL, activation='relu'))
+    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+
+    # Convolutional layer and maxpool layer 4
+    model.add(keras.layers.Conv2D(128, KERNEL, activation='relu'))
+    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+
+    # This layer flattens the resulting image array to 1D array
+    model.add(keras.layers.Flatten())
+
+    # Add a dropout layer
+    model.add(keras.layers.Dropout(rate=0.5))
+
+    # Hidden layer with 512 neurons and Rectified Linear Unit activation function 
+    model.add(keras.layers.Dense(512, activation='relu'))
+
+    # Output layer with single neuron which gives 0 for Cat or 1 for Dog 
+    #Here we use sigmoid activation function which makes our model output to lie between 0 and 1
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    print(model.summary())
+    return model
 
 
 # function to read all the brain images form all the sub directories under the given directory
 # and move them to class folder based on labels
-def read_and_organize_image_data(image_dir):
+def read_and_organize_image_data(image_dir, dir_prefix):
     print("Reading and oragnizing image data with labels")
-    init_empty_dirs(join_path(LABELLED_DATA_DIR, '0/'))
-    init_empty_dirs(join_path(LABELLED_DATA_DIR, '1/'))
+    init_empty_dirs(join_path(LABELLED_DATA_DIR, 'Noise/'))
+    init_empty_dirs(join_path(LABELLED_DATA_DIR, 'RNN/'))
 
     # get list of all sub directories under Slices folder    
-    image_dirs = [dir for dir in os.listdir(image_dir) if (os.path.isdir(join_path(image_dir, dir)) and dir.__contains__(PATIENT))]
+    image_dirs = [dir for dir in os.listdir(image_dir) if (os.path.isdir(join_path(image_dir, dir)) and dir.__contains__(dir_prefix))]
 
     for dir in image_dirs:
         sub_dir_path = join_path(image_dir, dir)
@@ -112,7 +152,7 @@ def read_and_organize_image_data(image_dir):
         else:
             for file_name in os.listdir(sub_dir_path):
                 if file_name.endswith(IMAGE_FILE_SUFFIX):
-                    label = str(labels_dict[remove_file_extension(file_name)])
+                    label = 'Noise' if labels_dict[remove_file_extension(file_name)] == 0 else 'RNN'
                     new_file_name = dir + FILE_NAME_SEPERATOR + file_name
                     shutil.copy(join_path(sub_dir_path, file_name), join_path(LABELLED_DATA_DIR + label, new_file_name))
     print("Labelled training data ready")
@@ -125,8 +165,23 @@ def save_model(model, model_filename):
 
 
 def main():
-    read_and_organize_image_data(PATIENT_DIR)
+    read_and_organize_image_data(PATIENT_DIR, PATIENT_PREFIX)
     train_dataset, test_dataset = get_train_and_test_dataset()
+    print(f"Model labels: {train_dataset.class_indices}")
+    model = get_cnn_model()
     
+    print('Training CNN model started')
+    # """ 
+    model.fit(
+        train_dataset,
+        batch_size=8,
+        epochs=10,
+        verbose=1,
+        validation_data=test_dataset,
+        steps_per_epoch=32)
+    # """
+    print('Training CNN model completed successfully')
+
+
 if __name__ == '__main__':
     main()
