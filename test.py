@@ -1,53 +1,67 @@
-import csv
-import cv2
+import classification
+import numpy as np
 import os
+import shutil
 
 
-TEST_DIR = 'testPatient/'
-TEST_DATA_DIR = 'test_Data/'
-TEST_LABELS_DIR = 'test_Labels/'
-IMAGE_FILE_SUFFIX = 'thresh.png'
-IMAGE_EXTENSION = '.png'
+from tensorflow import keras
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 
-# utility function to remove file extension form file name
-def remove_file_extension(file_name):
-    return os.path.splitext(file_name)[0]
+TEST_DATA_DIR = 'testPatient/test_Data/'
+TEST_LABELS_FILE = 'testPatient/test_Labels.csv'
+LABELLED_DATA_DIR = 'testPatient/LabelledData/'
+TEST_PREFIX = 'test'
+LABEL_FILE_EXTENSION = '.csv'
+LABEL_FILE_SUFFIX = 'Labels' + LABEL_FILE_EXTENSION
 
 
-# utility function to join directory path with file name
-def join_path(dir, filename):
-    return os.path.join(dir, filename)
+# function to read all the brain images form test data directory
+# and move them to class folder based on labels
+def read_and_organize_image_data(image_dir, labels_file):
+    print("Reading and oragnizing image data with labels")
+    classification.init_empty_dirs(classification.join_path(LABELLED_DATA_DIR, 'Noise/'))
+    classification.init_empty_dirs(classification.join_path(LABELLED_DATA_DIR, 'RNN/'))
+
+    labels_dict = classification.read_from_csv_file(labels_file)
+    if len(labels_dict) == 0:
+        print("Error labels not found!")
+    else:
+        for file_name in os.listdir(image_dir):
+            if file_name.endswith(classification.IMAGE_FILE_SUFFIX):
+                label = 'Noise' if labels_dict[classification.remove_file_extension(file_name)] == 0 else 'RNN'
+                shutil.copy(classification.join_path(image_dir, file_name), classification.join_path(LABELLED_DATA_DIR + label, file_name))
+    print("Labelled training data ready")
 
 
-# utility function to read all the brain images form the given directory
-def read_image_data(image_dir):
-    images = []
-    for file_name in os.listdir(image_dir):
-        if(file_name.endswith(IMAGE_FILE_SUFFIX)):
-            brain_image = cv2.imread(join_path(INPUT_DIR, file_name))
-            images.append((file_name, brain_image))
-    return images
+def load_test_dataset(test_data_dir):
+    test_datagen = ImageDataGenerator(rescale=1./255)
+    test_dataset = test_datagen.flow_from_directory(
+        test_data_dir,
+        target_size=(classification.IMAGE_WIDTH, classification.IMAGE_HEIGHT),
+        shuffle=False,
+        interpolation='bilinear',
+        batch_size=classification.BATCH_SIZE,
+        class_mode='binary')
+    return test_dataset
 
-
-# utility function to write data to csv file
-def write_to_csv_file(file_path, header, rows):
-    with open(file_path, 'w') as file:
-        writer = csv.writer(file)
-        writer.writerow(header)
-        writer.writerows(rows)
-
-
-# utility function to read data from csv file
-def read_from_csv_file(file_path):
-    csvDict = {}
-    with open(file_path, 'r') as file:
-        csvDict = csv.DictReader(file)
-    return csvDict
 
 def main():
-    NotImplemented
+    read_and_organize_image_data(TEST_DATA_DIR, TEST_LABELS_FILE)
+    test_dataset = load_test_dataset(LABELLED_DATA_DIR)
+    print(f"Model labels: {test_dataset.class_indices}")
 
+    model = keras.models.load_model(classification.MODEL_NAME)
+    metrics = model.evaluate(
+        test_dataset,
+        batch_size=classification.BATCH_SIZE,
+        verbose=1,
+        return_dict=True,
+    ) 
+    print("Model performance: ")
+    for metric_name, metric_value in metrics.items():
+        if metric_name != 'loss':
+            print(f'{metric_name} = {metric_value*100}')
 
 if __name__ == '__main__':
     main()

@@ -1,14 +1,12 @@
 import csv
 import os
 import shutil
-
+import tensorflow as tf
 
 from tensorflow import keras
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 
-TEST_DIR = 'testPatient/'
-TEST_LABELS_FILE = 'test_Labels.csv'
 PATIENT_DIR = 'PatientData/'
 PATIENT_PREFIX = 'Patient'
 LABELLED_DATA_DIR = PATIENT_DIR + 'LabelledData/'
@@ -20,8 +18,9 @@ FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
 MODEL_NAME = 'final_model'
-IMAGE_HEIGHT = 512
-IMAGE_WIDTH = 512
+IMAGE_HEIGHT = 432
+IMAGE_WIDTH = 432
+BATCH_SIZE = 8
 
 
 # utility function to remove file extension form file name
@@ -68,26 +67,29 @@ def read_from_csv_file(file_path):
 # function to get training and validation dataset
 def get_train_and_test_dataset():
     print("Generating training and valdiation datasets")
-    data_generator = ImageDataGenerator(validation_split=0.2, rescale=1/255)
+    data_generator = ImageDataGenerator(
+        validation_split=0.5,
+        rescale=1/255,
+        featurewise_std_normalization=True,
+        samplewise_std_normalization=True)
     train_dataset = data_generator.flow_from_directory(
         LABELLED_DATA_DIR,
         subset='training',
         target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
         interpolation='bilinear',
-        #keep_aspect_ratio=True,
+        keep_aspect_ratio=True,
         shuffle=True,
-        batch_size = 8,
-        class_mode = 'binary',
-        classes = [])
+        batch_size = BATCH_SIZE,
+        class_mode = 'binary')
                                          
     test_dataset = data_generator.flow_from_directory(
         LABELLED_DATA_DIR,
         subset='validation',
         target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
         interpolation='bilinear',
-        #keep_aspect_ratio=True,
+        keep_aspect_ratio=True,
         shuffle=True,
-        batch_size = 8,
+        batch_size = BATCH_SIZE,
         class_mode = 'binary')
     return train_dataset, test_dataset
 
@@ -95,7 +97,7 @@ def get_train_and_test_dataset():
 # function to get CNN model
 def get_cnn_model():
     KERNEL = (3, 3)
-    pool_size = (3,3)
+    pool_size = (3, 3)
     model = keras.Sequential()
 
     # Convolutional layer and maxpool layer 1
@@ -118,7 +120,7 @@ def get_cnn_model():
     model.add(keras.layers.Flatten())
 
     # Add a dropout layer
-    model.add(keras.layers.Dropout(rate=0.5))
+    model.add(keras.layers.Dropout(rate=0.3))
 
     # Hidden layer with 512 neurons and Rectified Linear Unit activation function 
     model.add(keras.layers.Dense(512, activation='relu'))
@@ -127,7 +129,15 @@ def get_cnn_model():
     #Here we use sigmoid activation function which makes our model output to lie between 0 and 1
     model.add(keras.layers.Dense(1, activation='sigmoid'))
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=[
+                tf.keras.metrics.BinaryAccuracy(name='Accuracy', threshold=0.5),
+                tf.keras.metrics.Precision(name='Precision'),
+                tf.keras.metrics.SensitivityAtSpecificity(0.5, name='Sensitivity'),
+                tf.keras.metrics.SpecificityAtSensitivity(0.5, name='Specificity')
+            ])
     print(model.summary())
     return model
 
@@ -166,11 +176,11 @@ def main():
     # """ 
     model.fit(
         train_dataset,
-        batch_size=8,
-        epochs=10,
+        batch_size=BATCH_SIZE,
+        epochs=15,
         verbose=1,
         validation_data=test_dataset,
-        steps_per_epoch=32)
+        steps_per_epoch=train_dataset.samples/BATCH_SIZE)
     # """
     print('Training CNN model completed successfully')
 
