@@ -1,12 +1,10 @@
 import csv
 import os
-import pickle
 import shutil
 
 
 from tensorflow import keras
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.preprocessing import image
 
 
 TEST_DIR = 'testPatient/'
@@ -21,7 +19,7 @@ LABEL_FILE_SUFFIX = 'Labels' + LABEL_FILE_EXTENSION
 FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
-MODEL_FILE_NAME = 'svm_model.sav'
+MODEL_NAME = 'final_model'
 IMAGE_HEIGHT = 512
 IMAGE_WIDTH = 512
 
@@ -158,12 +156,6 @@ def read_and_organize_image_data(image_dir, dir_prefix):
     print("Labelled training data ready")
 
 
-# function to save model
-def save_model(model, model_filename):
-    print("Saving model to file: " + model_filename)
-    pickle.dump(model, open(model_filename, 'wb'))
-
-
 def main():
     read_and_organize_image_data(PATIENT_DIR, PATIENT_PREFIX)
     train_dataset, test_dataset = get_train_and_test_dataset()
@@ -182,6 +174,8 @@ def main():
     # """
     print('Training CNN model completed successfully')
 
+    model.save(MODEL_NAME)
+    print(f'Model saved as: {MODEL_NAME}')
 
 if __name__ == '__main__':
     main()

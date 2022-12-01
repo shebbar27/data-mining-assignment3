@@ -1,6 +1,7 @@
 __pycache__/
 testPatient/
 PatientData/
+final_model/
 .DS_Store
 *.csv
 *.zip
