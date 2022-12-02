@@ -152,10 +152,10 @@ def compute_metrics_and_export_to_csv(noise_pred, rnn_pred):
     print(f"Specificity: {specificity: {2}.{4}}")
     
     rows = [
-        ('Accuracy:', f'{accuracy: {2}.{4}} %'),
-        ('Precision:', f'{precision: {2}.{4}} %'),
-        ('Sensitivity:', f'{sensitivity: {2}.{4}} %'),
-        ('Specificity:', f'{specificity: {2}.{4}} %')
+        ('Accuracy:', f'{accuracy: {2}.{4}}%'),
+        ('Precision:', f'{precision: {2}.{4}}%'),
+        ('Sensitivity:', f'{sensitivity: {2}.{4}}%'),
+        ('Specificity:', f'{specificity: {2}.{4}}%')
     ]
 
     classification.write_to_csv_file(METRICS_FILE, [], rows)
