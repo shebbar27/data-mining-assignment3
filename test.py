@@ -4,6 +4,7 @@ import os
 import shutil
 
 
+from operator import itemgetter
 from tensorflow import keras
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
 
@@ -112,11 +113,10 @@ def write_result_labels_to_csv(dataset, labels):
     rows = []
     index = 0
     while index < len(dataset):
-        rows.append([dataset[index][0], labels[index]])
+        rows.append([int(dataset[index][0]), labels[index]])
         index += 1
 
-    sorted(rows)
-    classification.write_to_csv_file(RESULT_LABELS_FILE, [classification.IC_HEADER + '_Number', classification.LABEL_HEADER], rows)
+    classification.write_to_csv_file(RESULT_LABELS_FILE, [classification.IC_HEADER + '_Number', classification.LABEL_HEADER], sorted(rows, key=itemgetter(0)))
 
 
 # funtion to compute metrics for predictions
