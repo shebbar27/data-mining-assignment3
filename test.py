@@ -34,6 +34,7 @@ def read_and_organize_image_data(image_dir, labels_file):
     print("Labelled training data ready")
 
 
+# function to load test dataset
 def load_test_dataset(test_data_dir):
     test_datagen = ImageDataGenerator(
         rescale=1./255,

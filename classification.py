@@ -23,6 +23,7 @@ MODEL_NAME = 'final_model.h5'
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 BATCH_SIZE = 32
+USE_VALIDATION_DATASET = False
 
 
 # utility function to remove file extension form file name
@@ -66,35 +67,89 @@ def read_from_csv_file(file_path):
     return csv_dict
 
 
-# function to get training and validation dataset
-def get_train_and_test_dataset():
-    print("Generating training and valdiation datasets")
-    data_generator = ImageDataGenerator(
-        validation_split=0.2,
+# function to plot loss and accuracy curves
+def plot_loss_and_accuracy_curves(history, plot_validation_info=False):
+    print('Plotting loss and accuracy curves')
+    accuracy = history.history['accuracy']
+    loss = history.history['loss']
+    val_accuracy = history.history['val_accuracy'] if plot_validation_info else None
+    val_loss = history.history['val_loss'] if plot_validation_info else None
+
+    epochs = range(1, len(accuracy) + 1)
+
+    plt.plot(epochs, accuracy, 'bo', label='Training accuracy')
+    if plot_validation_info:
+        plt.plot(epochs, val_accuracy, 'b', label='Validation accuracy')
+    plt.title('Accuracy with Epochs')
+    plt.legend()
+
+    plt.savefig('accuracy_with_epochs.png')
+    plt.close()
+
+    plt.plot(epochs, loss, 'bo', label='Training loss')
+    if plot_validation_info:
+        plt.plot(epochs, val_loss, 'b', label='Validation loss')
+    plt.title('Loss with Epochs')
+    plt.legend()
+
+    plt.savefig('loss_with_epochs.png')
+    plt.close()
+
+
+# function to get keras image data generator
+def get_image_data_generator(get_validation_data):
+    if get_validation_data:
+        return ImageDataGenerator(
+            validation_split=0.2,
+            rescale=1./255,
+            shear_range=0.2,
+            zoom_range=0.2,
+            horizontal_flip=True)
+    
+    return ImageDataGenerator(
         rescale=1./255,
         shear_range=0.2,
         zoom_range=0.2,
         horizontal_flip=True)
-    train_dataset = data_generator.flow_from_directory(
-        LABELLED_DATA_DIR,
-        subset='training',
-        target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
-        interpolation='bilinear',
-        batch_size = BATCH_SIZE,
-        class_mode = 'binary')
-                                         
-    test_dataset = data_generator.flow_from_directory(
-        LABELLED_DATA_DIR,
-        subset='validation',
-        target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
-        interpolation='bilinear',
-        batch_size = BATCH_SIZE,
-        class_mode = 'binary')
+
+
+# function to get training and validation dataset
+def get_train_dataset(use_validation_data):
+    print("Generating training and valdiation datasets")
+    data_generator = get_image_data_generator(use_validation_data)
+                                      
+    train_dataset = None
+    test_dataset = None
+
+    if use_validation_data:
+        train_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            subset='training',
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+        test_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            subset='validation',
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+    else:
+        train_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+
     return train_dataset, test_dataset
 
 
 # function to get CNN model
 def get_cnn_model():
+    print('Generating Keras Sequential model for CNN network')
     KERNEL = (3, 3)
     POOL_SIZE = (3, 3)
     model = Sequential()
@@ -158,48 +213,33 @@ def read_and_organize_image_data(image_dir, dir_prefix):
     print("Labelled training data ready")
 
 
-def plot_training_loss_and_accuracy(history):
-    acc = history.history['accuracy']
-    val_acc = history.history['val_accuracy']
-    loss = history.history['loss']
-    val_loss = history.history['val_loss']
-
-    epochs = range(1, len(acc) + 1)
-
-    plt.plot(epochs, acc, 'bo', label='Training accuracy')
-    plt.plot(epochs, val_acc, 'b', label='Validation accuracy')
-    plt.title('Training and validation accuracy')
-    plt.legend()
-
-    plt.savefig('train_and_val_accuracy.png')
-    plt.close()
-
-    plt.plot(epochs, loss, 'bo', label='Training loss')
-    plt.plot(epochs, val_loss, 'b', label='Validation loss')
-    plt.title('Training and validation loss')
-    plt.legend()
-
-    plt.savefig('train_and_val_loss.png')
-    plt.close()
-
 def main():
     read_and_organize_image_data(PATIENT_DIR, PATIENT_PREFIX)
-    train_dataset, test_dataset = get_train_and_test_dataset()
+    train_dataset, validation_dataset = get_train_dataset(USE_VALIDATION_DATASET)
     print(f"Model labels: {train_dataset.class_indices}")
     model = get_cnn_model()
     
     print('Training CNN model started')
-    history = model.fit(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        epochs=50,
-        steps_per_epoch=train_dataset.samples/BATCH_SIZE,
-        verbose=1,
-        validation_data=test_dataset,
-        validation_steps=test_dataset.samples/BATCH_SIZE)
+    history = None
+    if USE_VALIDATION_DATASET:
+        history = model.fit(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            epochs=50,
+            steps_per_epoch=train_dataset.samples/BATCH_SIZE,
+            verbose=1,
+            validation_data=validation_dataset,
+            validation_steps=validation_dataset.samples/BATCH_SIZE)
+    else:
+        history = model.fit(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            epochs=50,
+            steps_per_epoch=train_dataset.samples/BATCH_SIZE,
+            verbose=1)
     print('Training CNN model completed successfully')
 
-    plot_training_loss_and_accuracy(history)
+    plot_loss_and_accuracy_curves(history, USE_VALIDATION_DATASET)
 
     model.save(MODEL_NAME)
     print(f'Model saved as: {MODEL_NAME}')

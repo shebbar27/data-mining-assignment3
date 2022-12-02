@@ -6,5 +6,4 @@ final_model/
 *.csv
 *.zip
 *.bak
-*.h5
 *.png
