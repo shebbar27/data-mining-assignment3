@@ -143,7 +143,6 @@ def get_train_dataset(use_validation_data):
             interpolation='bilinear',
             batch_size = BATCH_SIZE,
             class_mode = 'binary')
-
     return train_dataset, test_dataset
 
 
