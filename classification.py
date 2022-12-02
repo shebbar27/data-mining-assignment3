@@ -218,7 +218,7 @@ def main():
     train_dataset, validation_dataset = get_train_dataset(USE_VALIDATION_DATASET)
     print(f"Model labels: {train_dataset.class_indices}")
     model = get_cnn_model()
-    
+
     print('Training CNN model started')
     history = None
     if USE_VALIDATION_DATASET:
