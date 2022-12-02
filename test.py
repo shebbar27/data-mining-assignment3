@@ -35,14 +35,17 @@ def read_and_organize_image_data(image_dir, labels_file):
 
 
 def load_test_dataset(test_data_dir):
-    test_datagen = ImageDataGenerator(rescale=1./255)
+    test_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
     test_dataset = test_datagen.flow_from_directory(
         test_data_dir,
-        target_size=(classification.IMAGE_WIDTH, classification.IMAGE_HEIGHT),
-        shuffle=False,
+        target_size=(classification.IMAGE_HEIGHT, classification.IMAGE_WIDTH),
         interpolation='bilinear',
-        batch_size=classification.BATCH_SIZE,
-        class_mode='binary')
+        batch_size = classification.BATCH_SIZE,
+        class_mode = 'binary')
     return test_dataset
 
 
@@ -56,8 +59,7 @@ def main():
         test_dataset,
         batch_size=classification.BATCH_SIZE,
         verbose=1,
-        return_dict=True,
-    ) 
+        return_dict=True) 
     print("Model performance: ")
     for metric_name, metric_value in metrics.items():
         if metric_name != 'loss':

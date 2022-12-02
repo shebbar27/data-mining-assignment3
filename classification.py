@@ -1,9 +1,11 @@
 import csv
+import matplotlib.pyplot as plt
 import os
 import shutil
-import tensorflow as tf
 
-from tensorflow import keras
+
+from tensorflow.keras.layers import Conv2D, Dropout, MaxPool2D, Flatten, Dense
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 
@@ -17,10 +19,10 @@ LABEL_FILE_SUFFIX = 'Labels' + LABEL_FILE_EXTENSION
 FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
-MODEL_NAME = 'final_model'
-IMAGE_HEIGHT = 432
-IMAGE_WIDTH = 432
-BATCH_SIZE = 8
+MODEL_NAME = 'final_model.h5'
+IMAGE_HEIGHT = 224
+IMAGE_WIDTH = 224
+BATCH_SIZE = 32
 
 
 # utility function to remove file extension form file name
@@ -68,17 +70,16 @@ def read_from_csv_file(file_path):
 def get_train_and_test_dataset():
     print("Generating training and valdiation datasets")
     data_generator = ImageDataGenerator(
-        validation_split=0.5,
-        rescale=1/255,
-        featurewise_std_normalization=True,
-        samplewise_std_normalization=True)
+        validation_split=0.2,
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
     train_dataset = data_generator.flow_from_directory(
         LABELLED_DATA_DIR,
         subset='training',
         target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
         interpolation='bilinear',
-        keep_aspect_ratio=True,
-        shuffle=True,
         batch_size = BATCH_SIZE,
         class_mode = 'binary')
                                          
@@ -87,8 +88,6 @@ def get_train_and_test_dataset():
         subset='validation',
         target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
         interpolation='bilinear',
-        keep_aspect_ratio=True,
-        shuffle=True,
         batch_size = BATCH_SIZE,
         class_mode = 'binary')
     return train_dataset, test_dataset
@@ -97,47 +96,40 @@ def get_train_and_test_dataset():
 # function to get CNN model
 def get_cnn_model():
     KERNEL = (3, 3)
-    pool_size = (3, 3)
-    model = keras.Sequential()
+    POOL_SIZE = (3, 3)
+    model = Sequential()
 
-    # Convolutional layer and maxpool layer 1
-    model.add(keras.layers.Conv2D(32, KERNEL, activation='relu', input_shape=(IMAGE_WIDTH, IMAGE_WIDTH, 3)))
-    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+    # Convolutional layer 1 with maxpooling
+    model.add(Conv2D(32, KERNEL, activation='relu', input_shape=(IMAGE_WIDTH, IMAGE_WIDTH, 3)))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
 
-    # Convolutional layer and maxpool layer 2
-    model.add(keras.layers.Conv2D(64, KERNEL, activation='relu'))
-    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+    # Convolutional layer 2 with maxpooling
+    model.add(Conv2D(64, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
 
-    # Convolutional layer and maxpool layer 3
-    model.add(keras.layers.Conv2D(128, KERNEL, activation='relu'))
-    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+    # Convolutional layer 3 with maxpooling
+    model.add(Conv2D(128, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
 
-    # Convolutional layer and maxpool layer 4
-    model.add(keras.layers.Conv2D(128, KERNEL, activation='relu'))
-    model.add(keras.layers.MaxPool2D(pool_size=pool_size))
+    # Convolutional layer 4 with maxpooling
+    model.add(Conv2D(128, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
 
-    # This layer flattens the resulting image array to 1D array
-    model.add(keras.layers.Flatten())
-
-    # Add a dropout layer
-    model.add(keras.layers.Dropout(rate=0.3))
+    # This layer flattens the resulting image array to 1D array and add a dropout layer
+    model.add(Flatten())
+    model.add(Dropout(rate=0.2))
 
     # Hidden layer with 512 neurons and Rectified Linear Unit activation function 
-    model.add(keras.layers.Dense(512, activation='relu'))
+    model.add(Dense(512, activation='relu'))
 
-    # Output layer with single neuron which gives 0 for Cat or 1 for Dog 
-    #Here we use sigmoid activation function which makes our model output to lie between 0 and 1
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    # Output layer with single neuron which gives 0 for Noise or 1 for RNN 
+    # Here we use sigmoid activation function which makes our model output to lie between 0 and 1
+    model.add(Dense(1, activation='sigmoid'))
 
     model.compile(
         optimizer='adam',
         loss='binary_crossentropy',
-        metrics=[
-                tf.keras.metrics.BinaryAccuracy(name='Accuracy', threshold=0.5),
-                tf.keras.metrics.Precision(name='Precision'),
-                tf.keras.metrics.SensitivityAtSpecificity(0.5, name='Sensitivity'),
-                tf.keras.metrics.SpecificityAtSensitivity(0.5, name='Specificity')
-            ])
+        metrics=['accuracy'])
     print(model.summary())
     return model
 
@@ -166,6 +158,30 @@ def read_and_organize_image_data(image_dir, dir_prefix):
     print("Labelled training data ready")
 
 
+def plot_training_loss_and_accuracy(history):
+    acc = history.history['accuracy']
+    val_acc = history.history['val_accuracy']
+    loss = history.history['loss']
+    val_loss = history.history['val_loss']
+
+    epochs = range(1, len(acc) + 1)
+
+    plt.plot(epochs, acc, 'bo', label='Training accuracy')
+    plt.plot(epochs, val_acc, 'b', label='Validation accuracy')
+    plt.title('Training and validation accuracy')
+    plt.legend()
+
+    plt.savefig('train_and_val_accuracy.png')
+    plt.close()
+
+    plt.plot(epochs, loss, 'bo', label='Training loss')
+    plt.plot(epochs, val_loss, 'b', label='Validation loss')
+    plt.title('Training and validation loss')
+    plt.legend()
+
+    plt.savefig('train_and_val_loss.png')
+    plt.close()
+
 def main():
     read_and_organize_image_data(PATIENT_DIR, PATIENT_PREFIX)
     train_dataset, test_dataset = get_train_and_test_dataset()
@@ -173,16 +189,17 @@ def main():
     model = get_cnn_model()
     
     print('Training CNN model started')
-    # """ 
-    model.fit(
+    history = model.fit(
         train_dataset,
         batch_size=BATCH_SIZE,
-        epochs=15,
+        epochs=50,
+        steps_per_epoch=train_dataset.samples/BATCH_SIZE,
         verbose=1,
         validation_data=test_dataset,
-        steps_per_epoch=train_dataset.samples/BATCH_SIZE)
-    # """
+        validation_steps=test_dataset.samples/BATCH_SIZE)
     print('Training CNN model completed successfully')
+
+    plot_training_loss_and_accuracy(history)
 
     model.save(MODEL_NAME)
     print(f'Model saved as: {MODEL_NAME}')

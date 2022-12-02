@@ -5,3 +5,5 @@ final_model/
 .DS_Store
 *.csv
 *.zip
+*.bak
+*.h5
