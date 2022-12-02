@@ -11,6 +11,7 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, i
 TEST_DATA_DIR = 'testPatient/test_Data/'
 TEST_LABELS_FILE = 'testPatient/test_Labels.csv'
 RESULT_LABELS_FILE = 'Results.csv'
+METRICS_FILE = 'Metrics.csv'
 LABELLED_DATA_DIR = 'testPatient/LabelledData/'
 TEST_PREFIX = 'test'
 LABEL_FILE_EXTENSION = '.csv'
@@ -117,6 +118,49 @@ def write_result_labels_to_csv(dataset, labels):
     sorted(rows)
     classification.write_to_csv_file(RESULT_LABELS_FILE, [classification.IC_HEADER + '_Number', classification.LABEL_HEADER], rows)
 
+
+# funtion to compute metrics for predictions
+def compute_metrics_and_export_to_csv(noise_pred, rnn_pred):
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
+    index = 0
+    while index < len(noise_pred):
+        if noise_pred[index] == 0:
+            tn += 1
+        else:
+            fp += 1
+        index += 1
+
+    index = 0
+    while index < len(rnn_pred):
+        if rnn_pred[index] == 1:
+            tp += 1
+        else:
+            fn += 1
+        index += 1
+
+    accuracy = ((tp+tn)/(tp+tn+fp+fn)) * 100
+    precision = (tp/(tp+fp)) * 100
+    sensitivity = (tp/(tp+fn)) * 100
+    specificity = (tn/(tn+fp)) * 100
+    print("Model performance")
+    print(f"Accuracy: {accuracy: {2}.{4}}")
+    print(f"Precision: {precision: {2}.{4}}")
+    print(f"Sensitivity: {sensitivity: {2}.{4}}")
+    print(f"Specificity: {specificity: {2}.{4}}")
+    
+    rows = [
+        ('Accuracy:', f'{accuracy: {2}.{4}} %'),
+        ('Precision:', f'{precision: {2}.{4}} %'),
+        ('Sensitivity:', f'{sensitivity: {2}.{4}} %'),
+        ('Specificity:', f'{specificity: {2}.{4}} %')
+    ]
+
+    classification.write_to_csv_file(METRICS_FILE, [], rows)
+
+
 def main():
     print(f'Laoding saved model: {classification.MODEL_NAME}')
     model = keras.models.load_model(classification.MODEL_NAME)
@@ -137,11 +181,11 @@ def main():
 
     noise, rnn = load_test_dataset_man(LABELLED_DATA_DIR)
     noise_pred_results = get_predictions(model, noise)
-    print(noise_pred_results)
+    # print(noise_pred_results)
     rnn_pred_results = get_predictions(model, rnn)
-    print(rnn_pred_results)
+    # print(rnn_pred_results)
     write_result_labels_to_csv(noise+rnn, noise_pred_results+rnn_pred_results)
-
+    compute_metrics_and_export_to_csv(noise_pred_results, rnn_pred_results)
 
 if __name__ == '__main__':
     main()
