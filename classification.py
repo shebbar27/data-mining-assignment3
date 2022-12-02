@@ -23,6 +23,7 @@ MODEL_NAME = 'final_model.h5'
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 BATCH_SIZE = 16
+RESCALE_FACTOR = 1./255
 USE_VALIDATION_DATASET = False
 
 
@@ -101,13 +102,13 @@ def get_image_data_generator(get_validation_data):
     if get_validation_data:
         return ImageDataGenerator(
             validation_split=0.2,
-            rescale=1./255,
+            rescale=RESCALE_FACTOR,
             shear_range=0.2,
             zoom_range=0.2,
             horizontal_flip=True)
     
     return ImageDataGenerator(
-        rescale=1./255,
+        rescale=RESCALE_FACTOR,
         shear_range=0.2,
         zoom_range=0.2,
         horizontal_flip=True)
