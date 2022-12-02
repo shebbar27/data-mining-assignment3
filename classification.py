@@ -1,20 +1,17 @@
 import csv
-import cv2
-import numpy as np
+import matplotlib.pyplot as plt
 import os
-import pandas as pd
-import pickle
-
-from skimage.transform import resize
-from sklearn import svm
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import train_test_split
+import shutil
 
 
-TEST_DIR = 'testPatient/'
-TEST_LABELS_FILE = 'test_Labels.csv'
-TRAIN_DIR = 'PatientData/'
+from tensorflow.keras.layers import Conv2D, Dropout, MaxPool2D, Flatten, Dense
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+
+PATIENT_DIR = 'PatientData/'
+PATIENT_PREFIX = 'Patient'
+LABELLED_DATA_DIR = PATIENT_DIR + 'LabelledData/'
 IMAGE_EXTENSION = '.png'
 IMAGE_FILE_SUFFIX = 'thresh' + IMAGE_EXTENSION
 LABEL_FILE_EXTENSION = '.csv'
@@ -22,8 +19,12 @@ LABEL_FILE_SUFFIX = 'Labels' + LABEL_FILE_EXTENSION
 FILE_NAME_SEPERATOR = '_'
 IC_HEADER = 'IC'
 LABEL_HEADER = 'Label'
-NAME_HEADER = 'Name'
-MODEL_FILE_NAME = 'svm_model.sav'
+MODEL_NAME = 'final_model.h5'
+IMAGE_HEIGHT = 224
+IMAGE_WIDTH = 224
+BATCH_SIZE = 16
+RESCALE_FACTOR = 1./255
+USE_VALIDATION_DATASET = False
 
 
 # utility function to remove file extension form file name
@@ -36,6 +37,13 @@ def join_path(dir, filename):
     return os.path.join(dir, filename)
 
 
+# utlity function to clear all contents of given directory
+def init_empty_dirs(dir_path):
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path, ignore_errors=True)
+    os.makedirs(dir_path)
+
+
 # utility function to write data to csv file
 def write_to_csv_file(file_path, header, rows):
     with open(file_path, 'w') as file:
@@ -45,129 +53,196 @@ def write_to_csv_file(file_path, header, rows):
 
 
 # utility function to read data from csv file
-def read_from_csv_file(dir, filename):
-    csvDict = {}
-    with open(join_path(dir, filename), 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            key = filename
-            key = key.removesuffix(LABEL_FILE_SUFFIX) + IC_HEADER + FILE_NAME_SEPERATOR + row[IC_HEADER] + FILE_NAME_SEPERATOR + remove_file_extension(IMAGE_FILE_SUFFIX)
-            csvDict[key] = 1 if row[LABEL_HEADER] != '0' else 0
-    return csvDict
+def read_from_csv_file(file_path):
+    csv_dict = {}
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                key = IC_HEADER + FILE_NAME_SEPERATOR + row[IC_HEADER] + FILE_NAME_SEPERATOR + remove_file_extension(IMAGE_FILE_SUFFIX)
+                csv_dict[key] = 1 if row[LABEL_HEADER] != '0' else 0
+    else:
+        print(f'Error file: {file_path} does not exist!')
+
+    #print(len(csv_dict))
+    return csv_dict
 
 
-# function to read all the brain images form all the sub directories under the given directory
-def read_image_data(image_dir):
-    print("Reading image data")
-    images = {}
+# function to plot loss and accuracy curves
+def plot_loss_and_accuracy_curves(history, plot_validation_info=False):
+    print('Plotting loss and accuracy curves')
+    accuracy = history.history['accuracy']
+    loss = history.history['loss']
+    val_accuracy = history.history['val_accuracy'] if plot_validation_info else None
+    val_loss = history.history['val_loss'] if plot_validation_info else None
 
-    # get list of all sub directories under Slices folder    
-    image_dirs = [dir for dir in os.listdir(image_dir) if os.path.isdir(join_path(image_dir, dir))]
+    epochs = range(1, len(accuracy) + 1)
 
-    for dir in image_dirs:
-        sub_dir_path = join_path(image_dir, dir)
-        for file_name in os.listdir(sub_dir_path):
-            if file_name.endswith(IMAGE_FILE_SUFFIX):
-                brain_image = cv2.imread(join_path(sub_dir_path, file_name))
-                key = dir + FILE_NAME_SEPERATOR + remove_file_extension(file_name)
-                images[key] = brain_image
-    return images
+    plt.plot(epochs, accuracy, 'bo', label='Training accuracy')
+    if plot_validation_info:
+        plt.plot(epochs, val_accuracy, 'b', label='Validation accuracy')
+    plt.title('Accuracy with Epochs')
+    plt.legend()
 
+    plt.savefig('accuracy_with_epochs.png')
+    plt.close()
 
-# function to read lables from the given directory
-def read_data_labels(labels_dir):
-    print("Reading label data")
-    data_labels = []
-    for file_name in os.listdir(labels_dir):
-        if file_name.endswith(LABEL_FILE_EXTENSION):
-            csvDict = read_from_csv_file(labels_dir, file_name)
-            data_labels.extend(list(csvDict.items()))
-    return data_labels
+    plt.plot(epochs, loss, 'bo', label='Training loss')
+    if plot_validation_info:
+        plt.plot(epochs, val_loss, 'b', label='Validation loss')
+    plt.title('Loss with Epochs')
+    plt.legend()
 
-
-# function to save model
-def save_model(model, model_filename):
-    print("Saving model to file: " + model_filename)
-    pickle.dump(model, open(model_filename, 'wb'))
+    plt.savefig('loss_with_epochs.png')
+    plt.close()
 
 
-# function to combime images tuple list with labels dictionary into dataframe
-def combine_images_and_labels(images, labels):
-    images_data_arr = []
-    label_data_arr = []
-    count = 0
-    h = 0
-    w = 0
-    print("Combining data into DataFrame")
-    for item in labels:
-        key = item[0]
-        label = item[1]
-        if key in images:
-            image = images[key]
-            if count == 0:
-                h, w, _ = image.shape
-                # print(h, w)
-                count += 1
-            else:
-                h_i, w_i, _ = image.shape
-                if h_i != h or w_i != w:
-                    image = resize(image, (h, w, 3))
-                    # print(h_i, w_i)
-        
-            images_data_arr.append(image.flatten())
-            label_data_arr.append(label)
-
-    images_features = np.array(images_data_arr)
-    labels_col = np.array(label_data_arr)
-    df = pd.DataFrame(images_features)
-    df[LABEL_HEADER] = labels_col
-
-    # print(df.head(n=5))
-    # print(df.info())
-    print("DataFrame created sucessfully")
-    return df
+# function to get keras image data generator
+def get_image_data_generator(get_validation_data):
+    if get_validation_data:
+        return ImageDataGenerator(
+            validation_split=0.2,
+            rescale=RESCALE_FACTOR,
+            shear_range=0.2,
+            zoom_range=0.2,
+            horizontal_flip=True)
+    
+    return ImageDataGenerator(
+        rescale=RESCALE_FACTOR,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
 
 
-# function to get SVM model
-def get_svm_model(enable_probability=True):
-    param_grid = {
-                    'C': [0.1, 1, 10, 100], 
-                    'gamma': [0.0001, 0.001, 0.1, 1],
-                    'kernel': ['rbf', 'poly']
-                }
+# function to get training and validation dataset
+def get_train_dataset(use_validation_data):
+    print("Generating training and valdiation datasets")
+    data_generator = get_image_data_generator(use_validation_data)
+                                      
+    train_dataset = None
+    test_dataset = None
 
-    svc = svm.SVC(probability=enable_probability)
-    model = GridSearchCV(svc, param_grid, n_jobs=-1, verbose=5)
+    if use_validation_data:
+        train_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            subset='training',
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+        test_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            subset='validation',
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+    else:
+        train_dataset = data_generator.flow_from_directory(
+            LABELLED_DATA_DIR,
+            target_size=(IMAGE_HEIGHT, IMAGE_WIDTH),
+            interpolation='bilinear',
+            batch_size = BATCH_SIZE,
+            class_mode = 'binary')
+    return train_dataset, test_dataset
+
+
+# function to get CNN model
+def get_cnn_model():
+    print('Generating Keras Sequential model for CNN network')
+    KERNEL = (3, 3)
+    POOL_SIZE = (3, 3)
+    model = Sequential()
+
+    # Convolutional layer 1 with maxpooling
+    model.add(Conv2D(32, KERNEL, activation='relu', input_shape=(IMAGE_WIDTH, IMAGE_WIDTH, 3)))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
+
+    # Convolutional layer 2 with maxpooling
+    model.add(Conv2D(64, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
+
+    # Convolutional layer 3 with maxpooling
+    model.add(Conv2D(128, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
+
+    # Convolutional layer 4 with maxpooling
+    model.add(Conv2D(128, KERNEL, activation='relu'))
+    model.add(MaxPool2D(pool_size=POOL_SIZE))
+
+    # This layer flattens the resulting image array to 1D array and add a dropout layer
+    model.add(Flatten())
+    model.add(Dropout(rate=0.2))
+
+    # Hidden layer with 512 neurons and Rectified Linear Unit activation function 
+    model.add(Dense(512, activation='relu'))
+
+    # Output layer with single neuron which gives 0 for Noise or 1 for RNN 
+    # Here we use sigmoid activation function which makes our model output to lie between 0 and 1
+    model.add(Dense(1, activation='sigmoid'))
+
+    model.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+    print(model.summary())
     return model
 
 
+# function to read all the brain images form all the sub directories under the given directory
+# and move them to class folder based on labels
+def read_and_organize_image_data(image_dir, dir_prefix):
+    print("Reading and oragnizing image data with labels")
+    init_empty_dirs(join_path(LABELLED_DATA_DIR, 'Noise/'))
+    init_empty_dirs(join_path(LABELLED_DATA_DIR, 'RNN/'))
+
+    # get list of all sub directories under Slices folder    
+    image_dirs = [dir for dir in os.listdir(image_dir) if (os.path.isdir(join_path(image_dir, dir)) and dir.__contains__(dir_prefix))]
+
+    for dir in image_dirs:
+        sub_dir_path = join_path(image_dir, dir)
+        labels_dict = read_from_csv_file(join_path(image_dir, dir + FILE_NAME_SEPERATOR + LABEL_FILE_SUFFIX))
+        if len(labels_dict) == 0:
+            print("Error labels not found!")
+        else:
+            for file_name in os.listdir(sub_dir_path):
+                if file_name.endswith(IMAGE_FILE_SUFFIX):
+                    label = 'Noise' if labels_dict[remove_file_extension(file_name)] == 0 else 'RNN'
+                    new_file_name = dir + FILE_NAME_SEPERATOR + file_name
+                    shutil.copy(join_path(sub_dir_path, file_name), join_path(LABELLED_DATA_DIR + label, new_file_name))
+    print("Labelled training data ready")
+
+
 def main():
-    images = read_image_data(TRAIN_DIR)
-    labels = read_data_labels(TRAIN_DIR)
-    df = combine_images_and_labels(images, labels)
-    labelled_df = df.copy()
+    read_and_organize_image_data(PATIENT_DIR, PATIENT_PREFIX)
+    train_dataset, validation_dataset = get_train_dataset(USE_VALIDATION_DATASET)
+    print(f"Model labels: {train_dataset.class_indices}")
+    model = get_cnn_model()
 
-    # supervised machine learning using SVM model
-    x=labelled_df.iloc[:,:-1]
-    y=labelled_df.iloc[:,-1]
-    model = get_svm_model()
-    
-    print("Generating training and testing dataset")
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.20, random_state=42, stratify=y)
-    
-    print("Training model started")
-    model.fit(x_train, y_train)
-    print("Training model started")
+    print('Training CNN model started')
+    history = None
+    if USE_VALIDATION_DATASET:
+        history = model.fit(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            epochs=50,
+            steps_per_epoch=train_dataset.samples/BATCH_SIZE,
+            verbose=1,
+            validation_data=validation_dataset,
+            validation_steps=validation_dataset.samples/BATCH_SIZE)
+    else:
+        history = model.fit(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            epochs=50,
+            steps_per_epoch=train_dataset.samples/BATCH_SIZE,
+            verbose=1)
+    print('Training CNN model completed successfully')
 
-    print("Evaluating model started")
-    y_pred = model.predict(x_test)
-    print("Evaluating model completed")
+    plot_loss_and_accuracy_curves(history, USE_VALIDATION_DATASET)
 
-    print("Model Performance: ")
-    print(f"The model is {accuracy_score(y_pred,y_test)*100}% accurate")
-
-    save_model(model, MODEL_FILE_NAME)
-
+    model.save(MODEL_NAME)
+    print(f'Model saved as: {MODEL_NAME}')
 
 if __name__ == '__main__':
     main()
